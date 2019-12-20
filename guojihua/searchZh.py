@@ -1,3 +1,4 @@
+﻿# -*- coding: utf-8 -*-
 import re
 import os
 import getopt
@@ -150,7 +151,7 @@ def checkFiles(f):
             retDt = parseJsonFile(jsonDt,f)
             if f in desFileHasZhSet:
                 with(open(f + '._des','w',encoding = 'utf-8')) as printF:
-                    json.dump(retDt,printF,sort_keys=False, indent=4, separators=(',', ': '))
+                    json.dump(retDt,printF,sort_keys=False, indent=4, separators=(',', ': '),ensure_ascii=False)
         else:
             lines = outF.readlines()
             for i, line in enumerate(lines):
