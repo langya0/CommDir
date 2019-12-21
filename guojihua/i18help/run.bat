@@ -1,0 +1,2 @@
+python ./searchZh.py
+pause

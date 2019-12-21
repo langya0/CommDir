@@ -4,12 +4,16 @@ import os
 import getopt
 import json
 import sys
+
+sys.path.append(os.path.abspath('./'))
+from enumFile import enumfile,getFileType,getFullPath
+
 # 方案：
 # 1、针对ui，场景文件，json解析拿到中文
 # 2、针对代码文件，对编译好的文件，忽略注释，提取中文
 
 ## 需要关注的文件列表json
-flgFilesNeedCheck = ['.js','.json','.scene','.prefab'] #'.ts','.json','.as','.html','.scene','.prefab' 
+flgFilesNeedCheck = ['ui','json','scene','prefab','as'] #'.ts','.json','.as','.html','.scene','.prefab' 
 ## 可以忽略的文件夹
 flgIgnorDirs = ['release','libs','tools','2313','.git','.gitignore','.laya','.rpt2_cache']  
 ## 场景文件，需要忽略的标签
@@ -25,36 +29,26 @@ srcPublishFiles = []
 ## 提取的中文文件列表
 desFileHasZhSet = set()
 
+## 中文及文件关系
+fileWordDict = dict()
+
+
+logFileName = 'guojihua.log'
+i18JsonOutFile = "i18n.json"
+i18nCfgFile = "i18ncfg.json"
+
 ## 文件枚举    
 def listfile(root):
-    files = os.listdir(root)
-    for f in files:
-        fullNm = os.path.abspath(root) + os.path.sep+ f
-        if not os.path.isdir(fullNm):
-            if os.path.isfile(fullNm) and (os.path.splitext(fullNm)[1]) in flgFilesNeedCheck:
-                baseName = os.path.basename(fullNm)
-                if(baseName in publishJsFiles):
-                    srcPublishFiles.append(fullNm)
-                else:
-                    srcFileList.append(fullNm)
+    def pushFilePathInList(f):
+        if(f in publishJsFiles):
+            srcPublishFiles.append(f)
         else:
-            if  f in flgIgnorDirs:
-                print('忽略目录',f)
-                continue
-                pass
-            else :
-                listfile(fullNm)
-
-    # for root, dirs, files in os.walk(root):
-    #     for x in ignorDir:
-    #         if(root.endswith(x)):
-    #             print('目录忽略',root)
-    #             continue
-    #     for f in files:
-    #         fullNm =  os.path.abspath(root) + os.path.sep+ f
-    #         if (os.path.splitext(fullNm)[1]) in fileFlg:
-    #             fileList.append(fullNm)
-    #     pass
+            srcFileList.append(f)
+    ign = []
+    ign.append(logFileName)
+    ign.append(i18JsonOutFile)
+    ign.append(i18nCfgFile)
+    enumfile(root,cbFun=pushFilePathInList,ignorDir=flgIgnorDirs,includeType=flgFilesNeedCheck,ignorFileList=ign)
 
 ## 使用说明
 def help():
@@ -64,7 +58,7 @@ usage: [-l | --listfile] >> 罗列需要处理的信息
         """)
 
 ## 拿到的所有中文集合
-zhSet = []
+zhSet = set()
 
 ## 注释集合
 com = []
@@ -93,7 +87,7 @@ def parseLine(line,notValue=True):
     if(notValue):
         re_words = re.compile(u"[\"']+.*?[\u4e00-\u9fa5]+.*[\u4e00-\u9fa5]+.*?['\"]")
     else:
-        re_words = re.compile(u"[\u4e00-\u9fa5]+")
+        re_words = re.compile(u".*[\u4e00-\u9fa5]+.*")  #json结构需要考虑整个串
     m = re.findall(re_words,line)
     if m and not checkIsComment(line):
         for x in m:
@@ -101,15 +95,21 @@ def parseLine(line,notValue=True):
             if len(ll) > 1:
                 [parseLine(p) for p in ll]
             else :
-                zhSet.append(x.strip('"').strip('\''))
+                zhSet.add(x.strip('"').strip('\''))
         return True
     return False
 
+logF = open(logFileName,'w')
 # 日志输出
 def LogStep(ar1, *d, **s):
-    print('\n{}{}'.format('>>>',ar1))
+    # print('\n{}{}'.format('>>>',ar1))
+    logF.write('\n{}{}\n'.format('>>>',ar1))
 def LogCoreInfo(ar1, *d, **s):
-    print('{}{}'.format('##',ar1))
+    logF.write('{}{}\n'.format('##',ar1))
+    # print('{}{}'.format('##',ar1))
+def logEnum(ar1, *d, **s):
+    logF.write('{}\n'.format(ar1))
+    # print('{}'.format(ar1))
 
 # 处理所有json文件
 def parseJsonFile(jsonDt,f):
@@ -118,7 +118,9 @@ def parseJsonFile(jsonDt,f):
     elif(isinstance(jsonDt,str)):
         # print(jsonDt)
         if(parseLine(jsonDt,False)):
-            LogCoreInfo('zh>> '+jsonDt)
+            if f not in fileWordDict.keys():
+                fileWordDict[f] = []
+            fileWordDict[f].append(jsonDt)
             desFileHasZhSet.add(f)
             jsonDt = 'langya5230_1'
     elif(isinstance(jsonDt,dict)):
@@ -140,11 +142,9 @@ def isJsonFile(f):
     except:
         return False
 
-lambda x:x+x
 def checkFiles(f):
     # print ('\n--------------------------------------------------\n####[checkFile....]',f)
     isJson = isJsonFile(f)
-    LogStep('检查文件类型json= {}\n{}\n'.format(isJson,f))
     with(open(f,'r',encoding = 'utf-8')) as outF:
         if(isJson and 1):
             jsonDt = json.load(outF)
@@ -156,38 +156,53 @@ def checkFiles(f):
             lines = outF.readlines()
             for i, line in enumerate(lines):
                 if(parseLine(line)):
-
-                    # print('ssssssss---------------',line.find('.uiView='))
-                    if(-1 == line.find('.uiView=')):
-                        print(line)
+                    if f not in fileWordDict.keys():
+                        fileWordDict[f] = []
+                    if(-1 == line.find('.uiView=')) and 1:  # ui文件的生成中文
+                        # logEnum(line)
+                        fileWordDict[f].append(line)
                         desFileHasZhSet.add(f)
                         lines[i] = '----' + os.linesep
             if f in desFileHasZhSet:
                 with(open(f + '._des','w',encoding = 'utf-8')) as printF:
                     printF.writelines(lines)
             pass
-        # [(CheckLine(line)) for line in outF.readlines()]
+    if(f in desFileHasZhSet):
+        LogStep('检查文件类型   有中文  {}  #json= {}\n{}'.format((os.path.basename(f)),isJson,f))
+        LogCoreInfo('文件内容中文'+ str(fileWordDict[f]))
+
 
 def start():
     os.system('cls')
 
     ## 枚举文件
     LogStep('枚举所有文件')
-    listfile('./')
+    listfile('./..')
     LogStep('所有[代码生成文件]列表')
-    [print(x) for x in srcPublishFiles]
+    [logEnum(x) for x in srcPublishFiles]
     LogStep('所有[源文件]列表')
-    [print(x) for x in srcFileList]
+    [logEnum(x) for x in srcFileList]
     LogStep('遍历提取[代码生成文件]中的中文')
     [checkFiles(f) for f in srcPublishFiles]
+    
     LogStep('遍历提取[源文件]中的中文')
     [checkFiles(f) for f in srcFileList]
 
     LogStep('所有中文')
-    [print(x) for x in zhSet]
+    [logEnum(x) for x in zhSet]
     LogStep('所有包含中文的注释')
-    [print(x) for x in com]
+    [logEnum(x) for x in com]
+
+    LogStep('文件-中文关系')
+    logEnum(json.dumps(fileWordDict,ensure_ascii=False,indent=4))
+    outWriteZhMapTab()
     pass
+                
+outWordDict = {}
+def outWriteZhMapTab():
+    with(open(i18JsonOutFile,'w',encoding = 'utf-8')) as printF:
+        outWordDict = {str(i).zfill(4):val for i, val in enumerate(zhSet)}
+        json.dump((outWordDict),printF,sort_keys=False, indent=4, separators=(',', ': '),ensure_ascii=False)
 
 if __name__ == '__main__':
     start()
