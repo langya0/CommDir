@@ -19,7 +19,7 @@ flgIgnorDirs = ['release','libs','tools','2313','.git','.gitignore','.laya','.rp
 ## 场景文件，需要忽略的标签
 flgIgnorKeys = ['labelFont','font','labelFont'] 
 ## 代码编译好的js文件，提取代码中有效中文
-publishJsFiles = ['Main.max.js','bundle.js']
+publishJsFiles = ['Main.max.js','bundle.js','code.js']
 
 #################################################################
 ## 遍历得到的源文件 在flgFilesNeedCheck范围内
@@ -88,7 +88,7 @@ def checkIsComment(line):
 def parseLine(line,notValue=True):
     re_words = ''
     if(notValue):
-        re_words = re.compile(u"[\"']+.*?[\u4e00-\u9fa5]+.*[\u4e00-\u9fa5]+.*?['\"]")
+        re_words = re.compile(u"[\"']+.*?[\u4e00-\u9fa5]+.*?['\"]") # 解决未匹配到单字问题
     else:
         re_words = re.compile(u".*[\u4e00-\u9fa5]+.*")  #json结构需要考虑整个串
     m = re.findall(re_words,line)
@@ -301,11 +301,14 @@ def updateCodeFiles():
                     if(checkIsComment(line)) or line.find('.uiView=')!=-1:
                         linesCp.append(line)
                         continue
-                    for zh in zhSetInPublishFile:
-                        if(line.find(zh)!=-1):
-                            reCheckZh = re.compile(u"[\'\"]{}[\'\"]".format(zh))  #json结构需要考虑整个串
+                    reZhs = re.compile(u"[\"'].*?[\u4e00-\u9fa5]+.*?['\"]")
+                    m = re.findall(reZhs,line)
+                    for x in m:
+                        x =x[1:-1] 
+                        if x in zhSetInPublishFile:
+                            reCheckZh = re.compile(u"[\'\"]{}[\'\"]".format(x))  
                             for l in re.findall(reCheckZh,line):
-                                line = line.replace(l,'window[\'i18nHelp\'].getStrById(\"{}\")'.format(outWordDictRe[zh]))
+                                line = line.replace(l,'window[\'i18nHelp\'].getStrById(\"{}\")'.format(outWordDictRe[x]))
                     linesCp.append(line)
             with(open(copyF,'w',encoding = 'utf-8')) as outf:
                 logEnum('写入文件：{}'.format(linesCp))
