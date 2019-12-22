@@ -13,13 +13,13 @@ from enumFile import enumfile,getFileType,getFullPath
 # 2、针对代码文件，对编译好的文件，忽略注释，提取中文
 
 ## 需要关注的文件列表 ui+代码
-flgFilesNeedCheck = ['ui','json','scene','prefab','as'] #'.ts','.json','.as','.html','.scene','.prefab' 
+flgFilesNeedCheck = ['ui','json','scene','prefab','as','js','ts'] #'.ts','.json','.as','.html','.scene','.prefab' 
 ## 可以忽略的文件夹
 flgIgnorDirs = ['release','libs','tools','2313','.git','.gitignore','.laya','.rpt2_cache']  
 ## 场景文件，需要忽略的标签
-flgIgnorKeys = ['labelFont','font'] 
+flgIgnorKeys = ['labelFont','font','labelFont'] 
 ## 代码编译好的js文件，提取代码中有效中文
-publishJsFiles = ['Main.max.js']
+publishJsFiles = ['Main.max.js','bundle.js']
 
 #################################################################
 ## 遍历得到的源文件 在flgFilesNeedCheck范围内
@@ -40,8 +40,13 @@ debug = False
 
 ## 拿到的所有中文集合
 zhSet = set()
+## 代码生成文件中文集合，用来筛选代码中需要处理的中文
+zhSetInPublishFile = set()
 ## 注释集合
 com = []
+
+# 正在处理中的文件
+workingF = ""   
 
 logFileName = 'guojihua.log'
 i18JsonOutFile = "i18n.json"
@@ -50,7 +55,7 @@ i18nCfgFile = "i18ncfg.json"
 ## 文件枚举    
 def listfile(root):
     def pushFilePathInList(f):
-        if(f in publishJsFiles):
+        if(os.path.basename(f) in publishJsFiles):
             srcPublishFiles.append(f)
         else:
             srcFileList.append(f)
@@ -94,6 +99,8 @@ def parseLine(line,notValue=True):
                 [parseLine(p) for p in ll]
             else :
                 zhSet.add(x.strip('"').strip('\''))
+                if(os.path.basename(workingF) in publishJsFiles):
+                    zhSetInPublishFile.add(x.strip('"').strip('\''))
         return True
     return False
 
@@ -148,6 +155,8 @@ def isJsonFile(f):
         return False
 
 def checkFiles(f):
+    global workingF
+    workingF = f
     isJson = isJsonFile(f)
     with(open(f,'r',encoding = 'utf-8')) as outF:
         # json文件
@@ -169,9 +178,9 @@ def checkFiles(f):
                         fileWordDict[f].append(line)
                         desFileHasZhSet.add(f)
                         lines[i] = '----' + os.linesep  #这里做考虑做替换
-            if f in desFileHasZhSet:
-                with(open(f + '._des','w',encoding = 'utf-8')) as printF:
-                    printF.writelines(lines)
+            # if f in desFileHasZhSet:
+            #     with(open(f + '._des','w',encoding = 'utf-8')) as printF:
+            #         printF.writelines(lines)
             pass
     if(f in desFileHasZhSet):
         LogStep('检查文件类型   有中文  {}  #json= {}\n{}'.format((os.path.basename(f)),isJson,f))
@@ -205,14 +214,24 @@ def start():
 
     LogStep('更新源json系列文件')
     updateJsonFiles()
+
+    LogStep('更新源非json系列文件-代码等')
+    updateCodeFiles()
+
+    LogStep('laya更新ui文件')
+    print("########################################################")
+    print("########################################################")
+    print("########################################################")
+    print("如果有更新ui文件，请在ide重新发布，确保*DlgUI.as,.ts优先更新到")
+    print("之后回进行代码文件的替换")
+    print('',str(zhSetInPublishFile))
+    os.system('exit')
     pass
 
 zhCheckRe = re.compile(u".*[\u4e00-\u9fa5]+.*")  #json结构需要考虑整个串
 #记录处理json调整
 strNeedChange = ""
 
-# json文件中文替换
-parseingF = ""
 def parseJson(jsonDt,parent=None):
     if(isinstance(jsonDt,list)):
         for i,item in enumerate( jsonDt):
@@ -237,7 +256,7 @@ def parseJson(jsonDt,parent=None):
             try:
                 parent['DataID'] = outWordDictRe[strNeedChange]    #替换为ID
             except:
-                logTryError('中文替换异常 文件 {},中文  {}'.format(parseingF,strNeedChange))
+                logTryError('中文替换异常 文件 {},中文  {}'.format(workingF,strNeedChange))
     return jsonDt
 
 import shutil
@@ -268,6 +287,32 @@ def updateJsonFiles():
     pass
 
 
+def updateCodeFiles():
+    for f in desFileHasZhSet:
+        if(os.path.basename(f) in publishJsFiles):
+            continue
+        LogStep('重命名替换[代码]文件{}'.format(f))
+        if(not isJsonFile(f)):
+            copyF = f+'.copy'
+            linesCp = []
+            with(open(f,'r',encoding = 'utf-8')) as printF:
+                lines = printF.readlines()
+                for line in lines:
+                    if(checkIsComment(line)) or line.find('.uiView=')!=-1:
+                        linesCp.append(line)
+                        continue
+                    for zh in zhSetInPublishFile:
+                        if(line.find(zh)!=-1):
+                            reCheckZh = re.compile(u"[\'\"]{}[\'\"]".format(zh))  #json结构需要考虑整个串
+                            for l in re.findall(reCheckZh,line):
+                                line = line.replace(l,'window[\'i18nHelp\'].getStrById(\"{}\")'.format(outWordDictRe[zh]))
+                    linesCp.append(line)
+            with(open(copyF,'w',encoding = 'utf-8')) as outf:
+                logEnum('写入文件：{}'.format(linesCp))
+                outf.writelines(linesCp)
+            os.remove(f)
+            os.rename(copyF,f)
+
 def outWriteZhMapTab():
     with(open(i18JsonOutFile,'w',encoding = 'utf-8')) as printF:
         for i, val in enumerate(zhSet):
@@ -282,23 +327,3 @@ if __name__ == '__main__':
             debug = True
 
     start()
-
-
-# def optHelp():
-#     # print (fileList)
-#     pass
-#     try:
-#         opts, args = getopt.getopt(sys.argv[1:], "lihf", ["ignor","help","file="])
-#         for opt_name,opt_value in opts:
-#             if opt_name in ('-h','--help'):
-#                 help()
-#                 sys.exit()
-#             if opt_name in ('-l'):
-#                 listfile(args[0])
-
-#                 print ('--------------')
-#                 print (srcFileList)
-#                 sys.exit()
-#     except getopt.GetoptError:
-#         print('getopt.GetoptError')
-#         pass
