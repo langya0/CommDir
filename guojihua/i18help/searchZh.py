@@ -20,6 +20,8 @@ flgIgnorDirs = ['release','libs','tools','2313','.git','.gitignore','.laya','.rp
 flgIgnorKeys = ['labelFont','font','labelFont'] 
 ## 代码编译好的js文件，提取代码中有效中文
 publishJsFiles = ['Main.max.js','bundle.js','code.js']
+## log标签
+logFlgNeedIgnor = ['LogUtil','console.log','console.info','console.error','console.warn','console.debug'] 
 
 #################################################################
 ## 遍历得到的源文件 在flgFilesNeedCheck范围内
@@ -52,6 +54,14 @@ logFileName = 'guojihua.log'
 i18JsonOutFile = "i18n.json"
 i18nCfgFile = "i18ncfg.json"
 
+# ""部分包含中文
+reZhWithFlg = re.compile(u"[\"'].*?[\u4e00-\u9fa5]+.*?['\"]") # 解决未匹配到单字问题
+# 包含中文即可
+reJustHasZh = re.compile(u".*[\u4e00-\u9fa5]+.*")  #json结构需要考虑整个串
+
+## 异常信息记录
+tryErrorInfoLis= []
+
 ## 文件枚举    
 def listfile(root):
     def pushFilePathInList(f):
@@ -64,6 +74,14 @@ def listfile(root):
     ign.append(i18JsonOutFile)
     ign.append(i18nCfgFile)
     enumfile(root,cbFun=pushFilePathInList,ignorDir=flgIgnorDirs,includeType=flgFilesNeedCheck,ignorFileList=ign)
+
+## 是否为日志相关
+def checkIsLog(line):
+    coreStr = line.strip()
+    for x in logFlgNeedIgnor:
+        if coreStr.find(x) == 0:
+            return True
+    return False
 
 ## 格式化文件是否为注释
 def checkIsComment(line):
@@ -88,11 +106,11 @@ def checkIsComment(line):
 def parseLine(line,notValue=True):
     re_words = ''
     if(notValue):
-        re_words = re.compile(u"[\"']+.*?[\u4e00-\u9fa5]+.*?['\"]") # 解决未匹配到单字问题
+        re_words = reZhWithFlg
     else:
-        re_words = re.compile(u".*[\u4e00-\u9fa5]+.*")  #json结构需要考虑整个串
+        re_words = reJustHasZh
     m = re.findall(re_words,line)
-    if m and not checkIsComment(line):
+    if m and not checkIsComment(line) and not checkIsLog(line):
         for x in m:
             ll = x.split(':')
             if len(ll) > 1 and notValue:    ## + and notValue json 不能分割
@@ -108,22 +126,17 @@ logF = open(logFileName,'w')
 # 日志输出
 def LogStep(ar1, *d, **s):
     if debug:
-        print('\n{}{}\n'.format('>>>',ar1))
+        print('\n{}{}\n'.format('重要节点>>>>>',ar1))
     else:
-        logF.write('\n{}{}\n'.format('>>>',ar1))
-def LogCoreInfo(ar1, *d, **s):
-    if debug:
-        print('{}{}\n'.format('##',ar1))
-    else:
-        logF.write('{}{}\n'.format('##',ar1))
+        logF.write('\n{}{}\n'.format('重要节点>>>>>',ar1))
 def logEnum(ar1, *d, **s):
     if debug:
-        print('{}\n'.format(ar1))
+        print('>> {}\n'.format(ar1))
     else:
         logF.write('{}\n'.format(ar1))
 def logTryError(ar1, *d, **s):
     if debug:
-        print('{}\n'.format(ar1))
+        print('#####ERROR{}\n'.format(ar1))
     else:
         logF.write('{}\n'.format(ar1))
 
@@ -184,7 +197,7 @@ def checkFiles(f):
             pass
     if(f in desFileHasZhSet):
         LogStep('检查文件类型   有中文  {}  #json= {}\n{}'.format((os.path.basename(f)),isJson,f))
-        LogCoreInfo('文件内容中文'+ str(fileWordDict[f]))
+        logEnum('文件内容中文'+ str(fileWordDict[f]))
 
 
 def start():
@@ -218,17 +231,18 @@ def start():
     LogStep('更新源非json系列文件-代码等')
     updateCodeFiles()
 
+    LogStep('记录部分异常场景')
+    [logEnum(x) for x in tryErrorInfoLis]
+
     LogStep('laya更新ui文件')
     print("########################################################")
     print("########################################################")
     print("########################################################")
     print("如果有更新ui文件，请在ide重新发布，确保*DlgUI.as,.ts优先更新到")
     print("之后回进行代码文件的替换")
-    print('',str(zhSetInPublishFile))
-    os.system('exit')
+
     pass
 
-zhCheckRe = re.compile(u".*[\u4e00-\u9fa5]+.*")  #json结构需要考虑整个串
 #记录处理json调整
 strNeedChange = ""
 
@@ -247,7 +261,7 @@ def parseJson(jsonDt,parent=None):
                 continue
             jsonDt[key] = parseJson(value)
             if isinstance(value,str):
-                x = re.findall(zhCheckRe,value)
+                x = re.findall(reJustHasZh,value)
                 if x:
                     strNeedChange = x[0]
                     ned = True
@@ -265,8 +279,7 @@ import shutil
 def updateJsonFiles():
     # 检查包含中文
     def checkLineHasZh(line):
-        re_words = re.compile(u".*[\u4e00-\u9fa5]+.*")  #json结构需要考虑整个串
-        m = re.findall(re_words,line)
+        m = re.findall(reJustHasZh,line)
         if m:
             return m
         return [""]
@@ -301,17 +314,30 @@ def updateCodeFiles():
                     if(checkIsComment(line)) or line.find('.uiView=')!=-1:
                         linesCp.append(line)
                         continue
-                    reZhs = re.compile(u"[\"'].*?[\u4e00-\u9fa5]+.*?['\"]")
-                    m = re.findall(reZhs,line)
+                    m = re.findall(reZhWithFlg,line)
+                    errInfo = ""
                     for x in m:
+                        errInfo = ""
                         x =x[1:-1] 
                         if x in zhSetInPublishFile:
-                            reCheckZh = re.compile(u"[\'\"]{}[\'\"]".format(x))  
-                            for l in re.findall(reCheckZh,line):
-                                line = line.replace(l,'window[\'i18nHelp\'].getStrById(\"{}\")'.format(outWordDictRe[x]))
+                            try :
+                                reCheckZh = re.compile(u"[\'\"]{}[\'\"]".format(x))  
+                                for l in re.findall(reCheckZh,line):
+                                    line = line.replace(l,'window[\'i18nHelp\'].getStrById(\"{}\")'.format(outWordDictRe[x]))
+                            except KeyError:
+                                errInfo = 'error,{}------{}'.format(x,line)
+                                tryErrorInfoLis.append(errInfo)
+                                pass
+                            except re.error:
+                                errInfo = 'error,{}------{}'.format(x,line)
+                                tryErrorInfoLis.append(errInfo)
+                                pass
+                            if errInfo:
+                                logTryError(errInfo)
+                            continue
                     linesCp.append(line)
             with(open(copyF,'w',encoding = 'utf-8')) as outf:
-                logEnum('写入文件：{}'.format(linesCp))
+                logEnum('写入文件：{}'.format(copyF))
                 outf.writelines(linesCp)
             os.remove(f)
             os.rename(copyF,f)
