@@ -224,6 +224,8 @@ def parseJson(jsonDt,parent=None):
         parent = jsonDt
         ned = False
         for key, value in items:
+            if(key in flgIgnorKeys):
+                continue
             jsonDt[key] = parseJson(value)
             if isinstance(value,str):
                 x = re.findall(zhCheckRe,value)
