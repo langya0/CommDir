@@ -21,7 +21,7 @@ flgIgnorKeys = ['labelFont','font','labelFont']
 ## 代码编译好的js文件，提取代码中有效中文
 publishJsFiles = ['Main.max.js','bundle.js','code.js']
 ## log标签
-logFlgNeedIgnor = ['LogUtil','console.log','console.info','console.error','console.warn','console.debug'] 
+logFlgNeedIgnor = ['LogUtil','console.log','console.info','console.error','console.warn','console.debug','throw'] 
 
 #################################################################
 ## 遍历得到的源文件 在flgFilesNeedCheck范围内
@@ -75,6 +75,16 @@ def listfile(root):
     ign.append(i18nCfgFile)
     enumfile(root,cbFun=pushFilePathInList,ignorDir=flgIgnorDirs,includeType=flgFilesNeedCheck,ignorFileList=ign)
 
+
+
+## 是否应当忽略
+def needIgnor(line):
+    if len(line) > 200:
+        return True
+    if checkIsComment(line) or checkIsLog(line) or line.find('.uiView=')!=-1:
+        return True
+    return False
+
 ## 是否为日志相关
 def checkIsLog(line):
     coreStr = line.strip()
@@ -82,7 +92,6 @@ def checkIsLog(line):
         if coreStr.find(x) == 0:
             return True
     return False
-
 ## 格式化文件是否为注释
 def checkIsComment(line):
     coreStr = line.strip()
@@ -99,28 +108,44 @@ def checkIsComment(line):
         com.append(coreStr)
         return True
     return False
-    pass
+
+def getSubStrSplit(line):
+    l1 = line.split('\'')
+    ret = []
+    aaa = []
+    for x in l1:
+        s =x.split('"')
+        for a in s:
+            aaa.append(a)
+    for i, v in enumerate(aaa):
+        if i % 2 ==1:
+            ret.append(v)
+    
+    return ret
 
 # 检查行是否包含中文,notValue:是否为 key-value的value 即不包含"
 # 做代码处理，这里还要考究
-def parseLine(line,notValue=True):
-    re_words = ''
-    if(notValue):
-        re_words = reZhWithFlg
-    else:
-        re_words = reJustHasZh
-    m = re.findall(re_words,line)
-    if m and not checkIsComment(line) and not checkIsLog(line):
+def parseLine(line,isValue = False):
+    if needIgnor(line):
+         return False
+         
+    if isValue:
+        line = '"{}"'.format(line)
+
+    r = getSubStrSplit(line)
+    if not r:
+        return False
+
+    ret = False
+    for x in r:
+        m = re.findall(reJustHasZh,x)
+        if m:
+            ret = True
         for x in m:
-            ll = x.split(':')
-            if len(ll) > 1 and notValue:    ## + and notValue json 不能分割
-                [parseLine(p) for p in ll]
-            else :
-                zhSet.add(x.strip('"').strip('\''))
-                if(os.path.basename(workingF) in publishJsFiles):
-                    zhSetInPublishFile.add(x.strip('"').strip('\''))
-        return True
-    return False
+            zhSet.add(x.strip('"').strip('\''))
+            if(os.path.basename(workingF) in publishJsFiles):
+                zhSetInPublishFile.add(x.strip('"').strip('\''))
+    return ret
 
 logF = open(logFileName,'w')
 # 日志输出
@@ -145,7 +170,7 @@ def parseJsonFile(jsonDt,f):
     if(isinstance(jsonDt,list)):
         jsonDt = [parseJsonFile(item,f) for item in jsonDt]
     elif(isinstance(jsonDt,str)):
-        if(parseLine(jsonDt,False)):
+        if(parseLine(jsonDt,True)):
             if f not in fileWordDict.keys():
                 fileWordDict[f] = []
             fileWordDict[f].append(jsonDt)
@@ -187,10 +212,8 @@ def checkFiles(f):
                 if(parseLine(line)):
                     if f not in fileWordDict.keys():
                         fileWordDict[f] = []
-                    if(-1 == line.find('.uiView=')) and 1:  # ui文件的生成中文
-                        fileWordDict[f].append(line)
-                        desFileHasZhSet.add(f)
-                        lines[i] = '----' + os.linesep  #这里做考虑做替换
+                    fileWordDict[f].append(line)
+                    desFileHasZhSet.add(f)
             # if f in desFileHasZhSet:
             #     with(open(f + '._des','w',encoding = 'utf-8')) as printF:
             #         printF.writelines(lines)
@@ -311,14 +334,19 @@ def updateCodeFiles():
             with(open(f,'r',encoding = 'utf-8')) as printF:
                 lines = printF.readlines()
                 for line in lines:
-                    if(checkIsComment(line)) or line.find('.uiView=')!=-1:
+                    if needIgnor(line):
                         linesCp.append(line)
                         continue
-                    m = re.findall(reZhWithFlg,line)
+                    # 忽略行尾注释
+                    a = line.split("//")
+                    if(not a):
+                        linesCp.append(line)
+                        continue
+
+                    m = getSubStrSplit(a[0])
                     errInfo = ""
                     for x in m:
                         errInfo = ""
-                        x =x[1:-1] 
                         if x in zhSetInPublishFile:
                             try :
                                 reCheckZh = re.compile(u"[\'\"]{}[\'\"]".format(x))  
