@@ -1,4 +1,3 @@
-// namespace my_deserialize {
 var IDENTIFIER_RE = /^[$A-Za-z_][0-9A-Za-z_$]*$/;
 
 var tmpValueDesc = {
@@ -89,38 +88,6 @@ function compileObjectType(sources, defaultValue, accessorToSet, propNameLiteral
         }
         sources.push('}else o' + accessorToSet + '=null;');
     }
-}
-
-function _befDeserialize(content, obj, cls) {
-    var len = obj.result.uuidList.length;
-
-    var curL = 'zh'
-    var lan_uuid = {}
-    for (var i = 0; i < len; ++i) {
-        if (obj.result.uuidObjList[i]['language'] && obj.result.uuidObjList[i]['language']) {
-            if (!lan_uuid[obj.result.uuidObjList[i]['language']])
-                lan_uuid[obj.result.uuidObjList[i]['language']] = []
-            lan_uuid[obj.result.uuidObjList[i]['language']].push(obj.result.uuidList[i])
-        }
-    }
-    var getIndex = (uuid) => {
-        for (var x in lan_uuid) {
-            for (var i = 0; i < lan_uuid[x].length; ++i) {
-                if (lan_uuid[x][i] == uuid) {
-                    return i
-                }
-            }
-        }
-        return -1;
-    }
-
-    for (var i = 0; i < len; ++i) {
-        var index = getIndex(obj.result.uuidList[i])
-        if (index != -1) {
-            obj.result.uuidList[i] = lan_uuid[curL][index]
-        }
-    }
-    return cls
 }
 
 function escapeForJS(s) {
@@ -242,35 +209,81 @@ function compileDeserialize(self, klass) {
         // parse the serialized data as primitive javascript object, so its __id__ will be dereferenced
         sources.push('s._deserializePrimitiveObject(o._$erialized,d);');
     }
-    console.log(JSON.stringify(sources));
     return Function('s', 'o', 'd', 'k', 't', sources.join(''));
 }
 
-export default function done_deserialize(serialized, self, klass) {
-    _befDeserialize(serialized, self, klass)
+/**
+ * 获取当前语言，可重写
+ */
+function getlang() {
+    if (!window.location) return {};
+    var q = window.location.search || window.location.hash;
+    if (q) {
+        var pairs = q.substring(1).split("&");
+        var obj = {};
+        for (var i = 0; i < pairs.length; i++) {
+            obj[pairs[i].split("=")[0]] = pairs[i].split("=")[1];
+        }
+        return obj['lang']
+    }
+    return "";
+}
+
+/**
+ * 
+ * @param obj deserialize 原始节点
+ */
+function befDeserialize(obj) {
+    var len = obj.result.uuidList.length;
+    var curL = getlang()
+    var lan_uuid = {}
+    for (var i = 0; i < len; ++i) {
+        if (obj.result.uuidObjList[i]['language'] && obj.result.uuidObjList[i]['language']) {
+            if (!lan_uuid[obj.result.uuidObjList[i]['language']])
+                lan_uuid[obj.result.uuidObjList[i]['language']] = []
+            lan_uuid[obj.result.uuidObjList[i]['language']].push(obj.result.uuidList[i])
+        }
+    }
+    var getIndex = (uuid) => {
+        for (var x in lan_uuid) {
+            for (var i = 0; i < lan_uuid[x].length; ++i) {
+                if (lan_uuid[x][i] == uuid) {
+                    return i
+                }
+            }
+        }
+        return -1;
+    }
+
+    for (var i = 0; i < len; ++i) {
+        var index = getIndex(obj.result.uuidList[i])
+        if (index != -1) {
+            if (CC_EDITOR || CC_TEST) {
+            } else {
+                obj.result.uuidList[i] = lan_uuid[curL][index]
+            }
+        }
+    }
+}
+
+/**
+ * @param self 原始数据
+ * @param klass 脚本类
+ */
+export default function done_deserialize(self, klass) {
+    /// 前置优化处理
+    befDeserialize(self)
+
+    // 拿到当前脚本序列化信息
+    var serialized;
+    for (var i = 0; i < self.customEnv.content.length; ++i) {
+        if (self.customEnv.content[i].__type__ == klass.__proto__.__cid__) {
+            serialized = self.customEnv.content[i]
+        }
+    }
+
+    /// deserialize.js 翻译执行
     var deserialize = compileDeserialize(self, klass.__proto__.constructor)
     deserialize(self, klass, serialized, klass.__proto__.constructor, undefined);
     return klass
-    // return klass
-}
-
-// }
-
-/// usage
-
-_deserialize(content, self){
-    // console.log('_decorator')  
-    // obj._deserialize(serialized.content, this);
-    content = {
-        "__type__": "e1b90/rohdEk4SdmmEZANaD",
-        "_name": "",
-        "_objFlags": 0,
-        "node": {
-            "__id__": 2
-        },
-        "_enabled": true,
-        "label": null,
-        "text": "hello"
-    }
-    return done_deserialize(content, self, this)
 }
