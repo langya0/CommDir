@@ -1,31 +1,53 @@
-﻿{
-    "typeFileNeedCheck":{
-        "desc":"检查文件类型",
-        "list":[
-            ".js",
-            ".json",
-            ".scene",
-            ".prefab"
+{
+    "typeFileNeedCheck": {
+        "desc": "需要检查的文件类型列表",
+        "list": [
+            "js",
+            "as",
+            "ts",
+            "ui",
+            "json",
+            "scene",
+            "prefab"
         ]
     },
-    "dirsIgnor":{
-        "desc":"忽略目录列表",
-        "list":[
+    "dirsIgnor": {
+        "desc": "忽略目录列表",
+        "list": [
             "release",
             "libs",
             "tools",
-            "2313",
             ".git",
             ".gitignore",
             ".laya",
             ".rpt2_cache"
         ]
     },
-    "flgIgnorInJsonFile":{
-        "desc":"json文件忽略标签",
-        "list":[
+    "flgIgnorInJsonFile": {
+        "desc": "json文件忽略标签",
+        "list": [
             "labelFont",
             "font"
+        ]
+    },
+    "flgIgnorLog": {
+        "desc": "日志及代码中需要忽略的日志等",
+        "list": [
+            "LogUtil",
+            "console.log",
+            "console.info",
+            "console.error",
+            "console.warn",
+            "console.debug",
+            "throw"
+        ]
+    },
+    "filePublish": {
+        "desc": "生成文件名称，用于提取代码中有效中文",
+        "list": [
+            "Main.max.js",
+            "bundle.js",
+            "code.js"
         ]
     }
 }

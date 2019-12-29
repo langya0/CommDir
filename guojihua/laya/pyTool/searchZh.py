@@ -12,12 +12,14 @@ from enumFile import enumfile,getFileType,getFullPath
 # 1、针对ui，场景文件，json解析拿到中文
 # 2、针对代码文件，对编译好的文件，忽略注释，提取中文
 
+#################################################################
+## 默认配置部分 
 ## 需要关注的文件列表 ui+代码
 flgFilesNeedCheck = ['ui','json','scene','prefab','as','js','ts'] #'.ts','.json','.as','.html','.scene','.prefab' 
 ## 可以忽略的文件夹
 flgIgnorDirs = ['release','libs','tools','2313','.git','.gitignore','.laya','.rpt2_cache']  
 ## 场景文件，需要忽略的标签
-flgIgnorKeys = ['labelFont','font','labelFont'] 
+flgIgnorKeys = ['labelFont','font'] 
 ## 代码编译好的js文件，提取代码中有效中文
 publishJsFiles = ['Main.max.js','bundle.js','code.js']
 ## log标签
@@ -62,6 +64,43 @@ reJustHasZh = re.compile(u".*[\u4e00-\u9fa5]+.*")  #json结构需要考虑整个
 ## 异常信息记录
 tryErrorInfoLis= []
 
+#################################################################
+## 加载配置文件
+def loadCfgFile():
+    with(open(i18nCfgFile,'r',encoding = 'utf-8')) as outF:
+        jsDt = json.load(outF)
+        if jsDt['typeFileNeedCheck'] and jsDt['typeFileNeedCheck']['list']:
+            flgFilesNeedCheck = jsDt['typeFileNeedCheck']['list']
+        if jsDt['dirsIgnor'] and jsDt['dirsIgnor']['list']:
+            flgIgnorDirs = jsDt['dirsIgnor']['list']
+        if jsDt['flgIgnorInJsonFile'] and jsDt['flgIgnorInJsonFile']['list']:
+            flgIgnorKeys = jsDt['flgIgnorInJsonFile']['list']
+        if jsDt['filePublish'] and jsDt['filePublish']['list']:
+            publishJsFiles = jsDt['filePublish']['list']
+        if jsDt['flgIgnorLog'] and jsDt['flgIgnorLog']['list']:
+            logFlgNeedIgnor = jsDt['flgIgnorLog']['list']
+        logEnum(str(jsDt))        
+    
+## 加载已有中文配置项，向后兼容
+def loadOldZhCfg():
+    tryErr = 1
+    try:
+        with(open(i18JsonOutFile,'r',encoding = 'utf-8')) as outF:
+            jsdt = json.load(outF)
+            for x in jsdt:
+                outWordDict[(x)] = jsdt[x]
+                outWordDictRe[jsdt[x]] = (x)
+                zhSet.add(jsdt[x])
+            logEnum(str(outWordDict))
+            logEnum(str(outWordDictRe))
+            
+    except FileNotFoundError:
+        logTryError('无旧中文')
+        pass
+    except json.decoder.JSONDecodeError:
+        logTryError('json解析异常')
+        pass
+
 ## 文件枚举    
 def listfile(root):
     def pushFilePathInList(f):
@@ -74,8 +113,6 @@ def listfile(root):
     ign.append(i18JsonOutFile)
     ign.append(i18nCfgFile)
     enumfile(root,cbFun=pushFilePathInList,ignorDir=flgIgnorDirs,includeType=flgFilesNeedCheck,ignorFileList=ign)
-
-
 
 ## 是否应当忽略
 def needIgnor(line):
@@ -92,6 +129,7 @@ def checkIsLog(line):
         if coreStr.find(x) == 0:
             return True
     return False
+
 ## 格式化文件是否为注释
 def checkIsComment(line):
     coreStr = line.strip()
@@ -222,53 +260,8 @@ def checkFiles(f):
         LogStep('检查文件类型   有中文  {}  #json= {}\n{}'.format((os.path.basename(f)),isJson,f))
         logEnum('文件内容中文'+ str(fileWordDict[f]))
 
-
-def start():
-    os.system('cls')
-
-    ## 枚举文件
-    LogStep('枚举所有文件')
-    listfile('./..')
-    LogStep('所有[代码生成文件]列表')
-    [logEnum(x) for x in srcPublishFiles]
-    LogStep('所有[源文件]列表')
-    [logEnum(x) for x in srcFileList]
-    LogStep('遍历提取[代码生成文件]中的中文')
-    [checkFiles(f) for f in srcPublishFiles]
-    
-    LogStep('遍历提取[源文件]中的中文')
-    [checkFiles(f) for f in srcFileList]
-
-    LogStep('所有中文')
-    [logEnum(x) for x in zhSet]
-    LogStep('所有包含中文的注释')
-    [logEnum(x) for x in com]
-
-    LogStep('文件-中文关系')
-    logEnum(json.dumps(fileWordDict,ensure_ascii=False,indent=4))
-    outWriteZhMapTab()
-
-    LogStep('更新源json系列文件')
-    updateJsonFiles()
-
-    LogStep('更新源非json系列文件-代码等')
-    updateCodeFiles()
-
-    LogStep('记录部分异常场景')
-    [logEnum(x) for x in tryErrorInfoLis]
-
-    LogStep('laya更新ui文件')
-    logEnum("########################################################")
-    logEnum("########################################################")
-    logEnum("########################################################")
-    logEnum("如果有更新ui文件，请在ide重新发布，确保*DlgUI.as,.ts优先更新到")
-    logEnum("之后回进行代码文件的替换")
-
-    pass
-
 #记录处理json调整
 strNeedChange = ""
-
 def parseJson(jsonDt,parent=None):
     if(isinstance(jsonDt,list)):
         for i,item in enumerate( jsonDt):
@@ -322,7 +315,7 @@ def updateJsonFiles():
             # (copyF,f)
     pass
 
-
+## 更新替换代码文件
 def updateCodeFiles():
     for f in desFileHasZhSet:
         if(os.path.basename(f) in publishJsFiles):
@@ -370,12 +363,72 @@ def updateCodeFiles():
             os.remove(f)
             os.rename(copyF,f)
 
+## 将生成的 id:中文 写入文件
 def outWriteZhMapTab():
     with(open(i18JsonOutFile,'w',encoding = 'utf-8')) as printF:
-        for i, val in enumerate(zhSet):
-            outWordDict [str(i).zfill(4)] =val 
-            outWordDictRe [val]=str(i).zfill(4)
+        i = 0
+        existIndex = []
+        allIndex = []
+        for val in zhSet:
+            if val in outWordDictRe:
+                allIndex.append(int(outWordDictRe[val]))
+                existIndex.append(int(outWordDictRe[val]))
+                continue
+            while str(i).zfill(5) in outWordDict:
+                i = i + 1
+
+            outWordDict [str(i).zfill(5)] =val 
+            outWordDictRe [val]=str(i).zfill(5)
+        outWordDict.sort()
         json.dump((outWordDict),printF,sort_keys=False, indent=4, separators=(',', ': '),ensure_ascii=False)
+
+def start():
+    os.system('cls')
+
+    LogStep('加载配置文件')
+    loadCfgFile()
+    LogStep('加载已有中文信息')
+    loadOldZhCfg()
+
+    LogStep('枚举所有文件')
+    listfile('./..')
+    LogStep('所有[代码生成文件]列表')
+    [logEnum(x) for x in srcPublishFiles]
+    LogStep('所有[源文件]列表')
+    [logEnum(x) for x in srcFileList]
+    LogStep('遍历提取[代码生成文件]中的中文')
+    [checkFiles(f) for f in srcPublishFiles]
+    
+    LogStep('遍历提取[源文件]中的中文')
+    [checkFiles(f) for f in srcFileList]
+
+    logEnum("########################################################")
+    LogStep('所有中文')
+    [logEnum(x) for x in zhSet]
+    LogStep('所有包含中文的注释')
+    [logEnum(x) for x in com]
+    logEnum("########################################################")
+
+    LogStep('文件-中文关系')
+    logEnum(json.dumps(fileWordDict,ensure_ascii=False,indent=4))
+    outWriteZhMapTab()
+
+    LogStep('更新源json系列文件')
+    updateJsonFiles()
+    LogStep('更新源非json系列文件-代码等')
+    updateCodeFiles()
+
+    LogStep('记录部分异常场景')
+    [logEnum(x) for x in tryErrorInfoLis]
+
+    LogStep('laya更新ui文件')
+    logEnum("########################################################")
+    logEnum("########################################################")
+    logEnum("########################################################")
+    logEnum("如果有更新ui文件，请在ide重新发布，确保*DlgUI.as,.ts优先更新到")
+    logEnum("之后回进行代码文件的替换")
+
+    pass
 
 if __name__ == '__main__':
     opts, args = getopt.getopt(sys.argv[1:], "d", ["debug"])
