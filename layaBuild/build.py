@@ -69,3 +69,5 @@ if(__name__ == "__main__"):
     renameDir(web_path + os.sep, newDir)
     # os.system("pause")
     pass
+## js项目编译
+## E:\engineering\HappySoccer\.laya\astool\layajs.exe e:\engineering\HappySoccer\.actionScriptProperties;iflash=false;chromerun=false;
